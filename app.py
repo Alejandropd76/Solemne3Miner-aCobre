@@ -38,7 +38,7 @@ st.set_page_config(
 # ==============================================================================
 
 def obtener_imagen_base64(ruta_imagen: str) -> str:
-    """Codifica una imagen local a Base64 para inyectarla como fondo en CSS."""
+    """Codifica una imagen local a Base64 para inyectarla en CSS y HTML."""
     if not os.path.exists(ruta_imagen):
         return ""
     with open(ruta_imagen, "rb") as archivo:
@@ -46,26 +46,27 @@ def obtener_imagen_base64(ruta_imagen: str) -> str:
 
 
 def aplicar_identidad_minera():
-    """Inyecta imagen de fondo, estilos CSS mineros y el banner superior."""
+    """Inyecta imagen de fondo, estilos CSS mineros, banner superior y reseña histórica."""
     fondo_b64 = obtener_imagen_base64(RUTA_FONDO)
+    banner_b64 = obtener_imagen_base64(RUTA_BANNER)
 
     if fondo_b64:
         css_fondo = f"""
         [data-testid="stAppViewContainer"] {{
             background-image: linear-gradient(
-                rgba(250, 246, 242, 0.84),
-                rgba(245, 236, 227, 0.88)
+                rgba(250, 246, 242, 0.58),
+                rgba(245, 236, 227, 0.65)
             ), url("data:image/jpeg;base64,{fondo_b64}");
             background-size: cover;
             background-position: center center;
             background-attachment: fixed;
         }}
         [data-testid="stHeader"] {{
-            background-color: rgba(250, 246, 242, 0.65);
-            backdrop-filter: blur(6px);
+            background-color: rgba(250, 246, 242, 0.45);
+            backdrop-filter: blur(4px);
         }}
         [data-testid="stSidebar"] {{
-            background-color: rgba(240, 229, 218, 0.92);
+            background-color: rgba(240, 229, 218, 0.88);
             backdrop-filter: blur(6px);
             border-right: 1px solid #D49A6A;
         }}
@@ -80,14 +81,14 @@ def aplicar_identidad_minera():
 
         /* Tarjetas de indicadores KPI con borde de cobre metálico */
         div[data-testid="stMetric"] {{
-            background-color: rgba(255, 255, 255, 0.95);
+            background-color: rgba(255, 255, 255, 0.94);
             border-left: 6px solid #B87333;
             border-top: 1px solid #E6D5C3;
             border-right: 1px solid #E6D5C3;
             border-bottom: 1px solid #E6D5C3;
             padding: 14px 18px;
             border-radius: 10px;
-            box-shadow: 0 3px 10px rgba(44, 30, 22, 0.08);
+            box-shadow: 0 3px 10px rgba(44, 30, 22, 0.10);
         }}
         div[data-testid="stMetricLabel"] {{
             color: #6E472B;
@@ -97,12 +98,13 @@ def aplicar_identidad_minera():
             color: #2C1E16;
         }}
 
-        /* Contenedores translúcidos para pestañas */
+        /* Contenedores para pestañas con buena legibilidad sobre el fondo */
         div[data-testid="stTabs"] {{
-            background-color: rgba(255, 255, 255, 0.78);
+            background-color: rgba(255, 255, 255, 0.85);
             padding: 16px 20px;
             border-radius: 12px;
             border: 1px solid #E6D5C3;
+            box-shadow: 0 2px 10px rgba(44, 30, 22, 0.06);
         }}
         button[data-baseweb="tab"] {{
             font-weight: 600;
@@ -115,12 +117,12 @@ def aplicar_identidad_minera():
         /* Contenedor Banner Principal */
         .banner-cobre {{
             background: linear-gradient(135deg, #241710 0%, #5E3018 52%, #B87333 100%);
-            padding: 22px 28px;
+            padding: 20px 26px;
             border-radius: 14px;
             color: #FAF6F2;
-            margin-bottom: 14px;
+            margin-bottom: 12px;
             border: 1px solid #D49A6A;
-            box-shadow: 0 4px 14px rgba(44, 30, 22, 0.20);
+            box-shadow: 0 4px 14px rgba(44, 30, 22, 0.22);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -128,42 +130,108 @@ def aplicar_identidad_minera():
         }}
         .banner-cobre h1 {{
             color: #FFFFFF;
-            margin: 0 0 8px 0;
-            font-size: 1.9rem;
+            margin: 0 0 6px 0;
+            font-size: 1.85rem;
             letter-spacing: -0.3px;
         }}
         .banner-cobre p {{
             color: #F3E5D8;
             margin: 0;
-            font-size: 0.96rem;
-            line-height: 1.45;
+            font-size: 0.95rem;
+            line-height: 1.4;
         }}
         .badge-cu {{
             background: rgba(255, 255, 255, 0.12);
             border: 2px solid #F2C185;
             border-radius: 12px;
-            padding: 10px 16px;
+            padding: 8px 14px;
             text-align: center;
-            min-width: 105px;
+            min-width: 100px;
             backdrop-filter: blur(4px);
         }}
         .badge-cu .num {{
-            font-size: 0.85rem;
+            font-size: 0.82rem;
             color: #F2C185;
             font-weight: 700;
             text-align: left;
         }}
         .badge-cu .sym {{
-            font-size: 2.1rem;
+            font-size: 2.0rem;
             font-weight: 800;
             color: #FFFFFF;
             line-height: 1.05;
         }}
         .badge-cu .name {{
-            font-size: 0.75rem;
+            font-size: 0.72rem;
             color: #F3E5D8;
             letter-spacing: 1px;
             text-transform: uppercase;
+        }}
+
+        /* Franja combinada: imagen panorámica compacta + reseña histórica y económica */
+        .franja-mina-grid {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: stretch;
+            margin-bottom: 18px;
+        }}
+        .franja-mina-img {{
+            position: relative;
+            flex: 0 0 360px;
+            max-width: 100%;
+            height: 165px;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #B87333;
+            box-shadow: 0 3px 10px rgba(44, 30, 22, 0.15);
+        }}
+        .franja-mina-img img {{
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center 48%;
+            display: block;
+        }}
+        .franja-mina-caption {{
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(transparent, rgba(36, 23, 16, 0.84));
+            color: #FAF6F2;
+            font-size: 0.76rem;
+            padding: 12px 12px 5px 12px;
+        }}
+        .resena-cobre-box {{
+            flex: 1 1 420px;
+            min-height: 165px;
+            background-color: rgba(255, 255, 255, 0.92);
+            border-left: 5px solid #B87333;
+            border-top: 1px solid #E6D5C3;
+            border-right: 1px solid #E6D5C3;
+            border-bottom: 1px solid #E6D5C3;
+            border-radius: 12px;
+            padding: 14px 20px;
+            box-shadow: 0 3px 10px rgba(44, 30, 22, 0.08);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }}
+        .resena-cobre-box h3 {{
+            margin: 0 0 6px 0;
+            color: #2C1E16;
+            font-size: 1.08rem;
+            font-weight: 700;
+        }}
+        .resena-cobre-box p {{
+            margin: 0 0 8px 0;
+            color: #3E2A1D;
+            font-size: 0.90rem;
+            line-height: 1.48;
+        }}
+        .resena-cobre-box p:last-child {{
+            margin-bottom: 0;
         }}
         </style>
 
@@ -177,7 +245,7 @@ def aplicar_identidad_minera():
                 </p>
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
-                <svg width="110" height="82" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+                <svg width="105" height="78" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
                     <polygon points="5,75 35,25 65,75" fill="#8C5327" opacity="0.7"/>
                     <polygon points="40,75 75,18 112,75" fill="#D49A6A" opacity="0.85"/>
                     <polygon points="75,18 66,33 75,30 84,33" fill="#FAF6F2"/>
@@ -196,12 +264,33 @@ def aplicar_identidad_minera():
         unsafe_allow_html=True
     )
 
-    # Banner fotográfico panorámico de mina a rajo abierto en el norte de Chile
-    if os.path.exists(RUTA_BANNER):
-        st.image(
-            RUTA_BANNER,
-            caption="Gran Minería del Cobre en el Norte de Chile — Yacimiento a Rajo Abierto y Cordillera de los Andes",
-            use_container_width=True
+    # Banner compacto acompañado de reseña histórica y económica del cobre en Chile
+    if banner_b64:
+        st.markdown(
+            f"""
+            <div class="franja-mina-grid">
+                <div class="franja-mina-img">
+                    <img src="data:image/jpeg;base64,{banner_b64}" alt="Mina a rajo abierto en Chile">
+                    <div class="franja-mina-caption">
+                        Gran Minería del Cobre — Norte de Chile
+                    </div>
+                </div>
+                <div class="resena-cobre-box">
+                    <h3>Importancia Histórica y Económica del Cobre en Chile</h3>
+                    <p>
+                        <strong>Legado histórico:</strong> Desde la metalurgia prehispánica y el auge de la gran minería
+                        en el siglo XX —culminando en la nacionalización de 1971—, el cobre ha articulado el desarrollo
+                        territorial, tecnológico y fiscal del país.
+                    </p>
+                    <p>
+                        <strong>Motor económico:</strong> Como principal productor mundial, Chile depende en gran medida de la
+                        dinámica de este metal para sus exportaciones, ingresos fiscales y balanza comercial, haciendo que
+                        las variaciones de precio y ley de mineral impacten directamente en la economía nacional.
+                    </p>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
         )
 
 
