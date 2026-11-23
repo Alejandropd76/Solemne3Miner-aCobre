@@ -5,7 +5,7 @@ INTEGRANTES:
 2. Felipe Farías
 3. Jesús Torres
 URL DE LA APLICACIÓN DESPLEGADA:
-proyectomineria.streamlit.app
+ https://proyectomineria.streamlit.app
 
 MODALIDAD Y FUENTE DE DATOS:
 - Modalidad: Archivos CSV locales cargados mediante rutas relativas con pandas:
