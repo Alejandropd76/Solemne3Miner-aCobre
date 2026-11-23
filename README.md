@@ -1,0 +1,1 @@
+https://proyectomineria.streamlit.app/
