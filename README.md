@@ -6,7 +6,7 @@ INTEGRANTES:
 3. Felipe Farías
 
 URL DE LA APLICACIÓN DESPLEGADA:
-[Pegar aquí el enlace público de Streamlit Community Cloud]
+https://proyectomineria.streamlit.app/
 
 MODALIDAD Y FUENTES DE DATOS:
 - Modalidad: Archivos CSV locales cargados mediante rutas relativas con pandas:
