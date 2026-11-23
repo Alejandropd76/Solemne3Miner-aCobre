@@ -129,11 +129,9 @@ def aplicar_identidad_minera():
             </div>
             <div style="display:flex; align-items:center; gap:16px;">
                 <svg width="110" height="82" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Cordillera de los Andes estilizada -->
                     <polygon points="5,75 35,25 65,75" fill="#8C5327" opacity="0.7"/>
                     <polygon points="40,75 75,18 112,75" fill="#D49A6A" opacity="0.85"/>
                     <polygon points="75,18 66,33 75,30 84,33" fill="#FAF6F2"/>
-                    <!-- Terrazas mina rajo abierto -->
                     <path d="M18,75 Q60,55 102,75 Z" fill="#2C1E16"/>
                     <path d="M28,75 Q60,62 92,75" stroke="#F2C185" stroke-width="2" fill="none"/>
                     <path d="M38,75 Q60,68 82,75" stroke="#1E7E7A" stroke-width="2" fill="none"/>
@@ -149,7 +147,6 @@ def aplicar_identidad_minera():
         unsafe_allow_html=True
     )
 
-    # Si el equipo agrega una fotografía local llamada 'banner_mineria.jpg', se muestra aquí
     if os.path.exists(RUTA_IMAGEN_OPCIONAL):
         st.image(
             RUTA_IMAGEN_OPCIONAL,
@@ -166,9 +163,7 @@ def renderizar_logo_sidebar():
             <svg width="96" height="96" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
                 <circle cx="50" cy="50" r="46" fill="#2C1E16" stroke="#B87333" stroke-width="4"/>
                 <circle cx="50" cy="50" r="39" fill="none" stroke="#1E7E7A" stroke-width="1.5" stroke-dasharray="4 3"/>
-                <!-- Lingote / Cátodo de cobre -->
                 <polygon points="30,66 70,66 63,52 37,52" fill="#B87333" stroke="#F2C185" stroke-width="1.5"/>
-                <!-- Piquetas cruzadas -->
                 <line x1="32" y1="26" x2="68" y2="48" stroke="#FAF6F2" stroke-width="3" stroke-linecap="round"/>
                 <line x1="68" y1="26" x2="32" y2="48" stroke="#FAF6F2" stroke-width="3" stroke-linecap="round"/>
                 <path d="M27,31 Q35,21 43,25" stroke="#D49A6A" stroke-width="3" fill="none" stroke-linecap="round"/>
@@ -316,7 +311,7 @@ def preparar_datos_productos(df_raw: pd.DataFrame, df_precios_anual: pd.DataFram
 
 
 def filtrar_companias(df: pd.DataFrame, companias: list, rango_anios: tuple) -> pd.DataFrame:
-    """Filtra el DataFrame de compañías según los parámetros de la barra lateral."""
+    """Filtra el DataFrame de compañías según los parámetros seleccionados."""
     return df[
         (df["compania"].isin(companias)) &
         (df["anio"] >= rango_anios[0]) &
@@ -335,7 +330,7 @@ def grafico_lineas_evolucion(df: pd.DataFrame, col_val: str, unidad: str, mostra
         "precio_cusd_lb": "mean"
     })
 
-    fig, ax1 = plt.subplots(figsize=(8, 4.4))
+    fig, ax1 = plt.subplots(figsize=(10.5, 4.2))
     fig.patch.set_facecolor("#FFFFFF")
     ax1.set_facecolor("#FCF9F6")
 
@@ -347,7 +342,7 @@ def grafico_lineas_evolucion(df: pd.DataFrame, col_val: str, unidad: str, mostra
     ax1.set_xlabel("Año", fontweight="bold", color=COLOR_BRONCE)
     ax1.set_ylabel(f"Producción Total ({unidad})", color=COLOR_TURQUESA, fontweight="bold")
     ax1.tick_params(axis="y", labelcolor=COLOR_TURQUESA)
-    ax1.set_xticks(df_anual["anio"][::2])
+    ax1.set_xticks(df_anual["anio"])
     ax1.grid(True, linestyle="--", alpha=0.35, color="#C8B6A6")
     ax1.spines["top"].set_visible(False)
 
@@ -381,7 +376,7 @@ def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: i
         .sort_values(by=col_val, ascending=True)
     )
 
-    fig, ax = plt.subplots(figsize=(8, 4.4))
+    fig, ax = plt.subplots(figsize=(10.5, 4.5))
     fig.patch.set_facecolor("#FFFFFF")
     ax.set_facecolor("#FCF9F6")
 
@@ -392,13 +387,13 @@ def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: i
     for barra in barras:
         ancho = barra.get_width()
         ax.text(
-            ancho + max_val * 0.015,
+            ancho + max_val * 0.012,
             barra.get_y() + barra.get_height() / 2,
             f"{ancho:,.0f}",
-            va="center", fontsize=8, color=COLOR_BRONCE, fontweight="bold"
+            va="center", fontsize=8.5, color=COLOR_BRONCE, fontweight="bold"
         )
 
-    ax.set_xlim(0, max_val * 1.16)
+    ax.set_xlim(0, max_val * 1.14)
     ax.set_title(f"Top {len(df_top)} Compañías por Producción Acumulada", fontweight="bold", color=COLOR_BRONCE)
     ax.set_xlabel(f"Producción Acumulada ({unidad})", fontweight="bold", color=COLOR_BRONCE)
     ax.set_ylabel("Compañía / Faena", fontweight="bold", color=COLOR_BRONCE)
@@ -491,34 +486,26 @@ def main():
     df_comp, info_comp = preparar_datos_companias(raw_comp, df_prec_anual)
     df_prod, info_prod = preparar_datos_productos(raw_prod, df_prec_anual)
 
+    todas_companias = sorted(df_comp["compania"].unique().tolist())
+    anio_min, anio_max = int(df_comp["anio"].min()), int(df_comp["anio"].max())
+
+    # Inicializar en session_state los controles que van debajo de cada gráfico
+    if "rango_anios" not in st.session_state:
+        st.session_state["rango_anios"] = (anio_min, anio_max)
+    if "top_n" not in st.session_state:
+        st.session_state["top_n"] = 10
+
     # --------------------------------------------------------------------------
-    # BARRA LATERAL: EMBLEMA Y CONTROLES DE FILTRADO
+    # BARRA LATERAL: EMBLEMA Y CONTROLES GENERALES
     # --------------------------------------------------------------------------
     renderizar_logo_sidebar()
     st.sidebar.header("Filtros y Controles")
-    st.sidebar.info("Ajusta los parámetros para actualizar métricas, gráficos y tablas.")
+    st.sidebar.info("Ajusta las compañías y unidades. El rango de años y el Top N se controlan bajo cada gráfico.")
 
-    todas_companias = sorted(df_comp["compania"].unique().tolist())
     companias_sel = st.sidebar.multiselect(
         "Compañías / Faenas mineras",
         options=todas_companias,
         default=todas_companias
-    )
-
-    anio_min, anio_max = int(df_comp["anio"].min()), int(df_comp["anio"].max())
-    rango_anios = st.sidebar.slider(
-        "Rango de años",
-        min_value=anio_min,
-        max_value=anio_max,
-        value=(anio_min, anio_max)
-    )
-
-    top_n = st.sidebar.number_input(
-        "Cantidad de compañías en el ranking (Top N)",
-        min_value=3,
-        max_value=len(todas_companias),
-        value=10,
-        step=1
     )
 
     unidad_radio = st.sidebar.radio(
@@ -530,10 +517,14 @@ def main():
 
     mostrar_precio = st.sidebar.checkbox("Superponer precio del cobre en evolución", value=True)
 
-    df_comp_filt = filtrar_companias(df_comp, companias_sel, rango_anios)
+    # Usar valores actuales de session_state para filtrar datos y KPIs
+    rango_actual = st.session_state["rango_anios"]
+    top_n_actual = st.session_state["top_n"]
+
+    df_comp_filt = filtrar_companias(df_comp, companias_sel, rango_actual)
 
     if df_comp_filt.empty:
-        st.warning("No hay datos disponibles para la selección actual. Elige al menos una compañía.")
+        st.warning("No hay datos disponibles para la selección actual. Elige al menos una compañía o amplía los años.")
         st.stop()
 
     # --------------------------------------------------------------------------
@@ -565,11 +556,26 @@ def main():
     ])
 
     with tab1:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.pyplot(grafico_lineas_evolucion(df_comp_filt, col_val, unidad_txt, mostrar_precio))
-        with col_b:
-            st.pyplot(grafico_barras_ranking(df_comp_filt, col_val, unidad_txt, top_n))
+        # 1) Gráfico de Evolución Anual + Slider inmediatamente debajo
+        st.pyplot(grafico_lineas_evolucion(df_comp_filt, col_val, unidad_txt, mostrar_precio))
+        st.slider(
+            "Rango de años",
+            min_value=anio_min,
+            max_value=anio_max,
+            key="rango_anios"
+        )
+
+        st.divider()
+
+        # 2) Gráfico Top N Compañías debajo del anterior + Control numérico inmediatamente debajo
+        st.pyplot(grafico_barras_ranking(df_comp_filt, col_val, unidad_txt, top_n_actual))
+        st.number_input(
+            "Cantidad de compañías en el ranking (Top N)",
+            min_value=3,
+            max_value=len(todas_companias),
+            step=1,
+            key="top_n"
+        )
 
     with tab2:
         col_p1, col_p2 = st.columns(2)
@@ -577,7 +583,7 @@ def main():
             st.pyplot(grafico_dispersion_precio_produccion(df_comp_filt, col_val, unidad_txt))
         with col_p2:
             st.caption("Nota: El desglose por subproducto refinado cubre 1998–2017.")
-            st.pyplot(grafico_pastel_refinado(df_prod, col_val, rango_anios))
+            st.pyplot(grafico_pastel_refinado(df_prod, col_val, rango_actual))
 
     with tab3:
         vista_tabla = st.selectbox(
