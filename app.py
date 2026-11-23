@@ -1,5 +1,6 @@
 import os
 import re
+import base64
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,7 +10,11 @@ import streamlit as st
 RUTA_COMPANIAS = "Producción de cobre por compañía.xlsx - Sheet0.csv"
 RUTA_PRODUCTOS = "produccion-por-producto.csv"
 RUTA_PRECIOS = "copper-price.csv"
-RUTA_IMAGEN_OPCIONAL = "banner_mineria.jpg"
+
+# Rutas relativas de las imágenes locales en la carpeta raíz
+RUTA_FONDO = "fondo_mineria.jpg"
+RUTA_BANNER = "banner_cobre.jpg"
+RUTA_CATODOS = "catodos_cobre.jpg"
 
 # Factor de conversión oficial: 1 tonelada métrica = 2.204,62262 libras
 LIBRAS_POR_TONELADA = 2204.62262
@@ -29,67 +34,111 @@ st.set_page_config(
 
 
 # ==============================================================================
-# 0. ESTILOS VISUALES E IDENTIDAD MINERA (CSS + SVG)
+# 0. ESTILOS VISUALES, FONDO E IDENTIDAD MINERA (CSS + IMÁGENES + SVG)
 # ==============================================================================
 
+def obtener_imagen_base64(ruta_imagen: str) -> str:
+    """Codifica una imagen local a Base64 para inyectarla como fondo en CSS."""
+    if not os.path.exists(ruta_imagen):
+        return ""
+    with open(ruta_imagen, "rb") as archivo:
+        return base64.b64encode(archivo.read()).decode("utf-8")
+
+
 def aplicar_identidad_minera():
-    """Inyecta estilos CSS personalizados y renderiza el banner superior temático."""
-    st.markdown(
+    """Inyecta imagen de fondo, estilos CSS mineros y el banner superior."""
+    fondo_b64 = obtener_imagen_base64(RUTA_FONDO)
+
+    if fondo_b64:
+        css_fondo = f"""
+        [data-testid="stAppViewContainer"] {{
+            background-image: linear-gradient(
+                rgba(250, 246, 242, 0.84),
+                rgba(245, 236, 227, 0.88)
+            ), url("data:image/jpeg;base64,{fondo_b64}");
+            background-size: cover;
+            background-position: center center;
+            background-attachment: fixed;
+        }}
+        [data-testid="stHeader"] {{
+            background-color: rgba(250, 246, 242, 0.65);
+            backdrop-filter: blur(6px);
+        }}
+        [data-testid="stSidebar"] {{
+            background-color: rgba(240, 229, 218, 0.92);
+            backdrop-filter: blur(6px);
+            border-right: 1px solid #D49A6A;
+        }}
         """
+    else:
+        css_fondo = ""
+
+    st.markdown(
+        f"""
         <style>
+        {css_fondo}
+
         /* Tarjetas de indicadores KPI con borde de cobre metálico */
-        div[data-testid="stMetric"] {
-            background-color: #FFFFFF;
+        div[data-testid="stMetric"] {{
+            background-color: rgba(255, 255, 255, 0.95);
             border-left: 6px solid #B87333;
             border-top: 1px solid #E6D5C3;
             border-right: 1px solid #E6D5C3;
             border-bottom: 1px solid #E6D5C3;
             padding: 14px 18px;
             border-radius: 10px;
-            box-shadow: 0 2px 6px rgba(44, 30, 22, 0.06);
-        }
-        div[data-testid="stMetricLabel"] {
+            box-shadow: 0 3px 10px rgba(44, 30, 22, 0.08);
+        }}
+        div[data-testid="stMetricLabel"] {{
             color: #6E472B;
             font-weight: 600;
-        }
-        div[data-testid="stMetricValue"] {
+        }}
+        div[data-testid="stMetricValue"] {{
             color: #2C1E16;
-        }
-        /* Estilo de pestañas */
-        button[data-baseweb="tab"] {
+        }}
+
+        /* Contenedores translúcidos para pestañas */
+        div[data-testid="stTabs"] {{
+            background-color: rgba(255, 255, 255, 0.78);
+            padding: 16px 20px;
+            border-radius: 12px;
+            border: 1px solid #E6D5C3;
+        }}
+        button[data-baseweb="tab"] {{
             font-weight: 600;
             color: #5C3D28;
-        }
-        button[data-baseweb="tab"][aria-selected="true"] {
+        }}
+        button[data-baseweb="tab"][aria-selected="true"] {{
             color: #B87333;
-        }
+        }}
+
         /* Contenedor Banner Principal */
-        .banner-cobre {
+        .banner-cobre {{
             background: linear-gradient(135deg, #241710 0%, #5E3018 52%, #B87333 100%);
-            padding: 24px 30px;
+            padding: 22px 28px;
             border-radius: 14px;
             color: #FAF6F2;
-            margin-bottom: 20px;
+            margin-bottom: 14px;
             border: 1px solid #D49A6A;
-            box-shadow: 0 4px 14px rgba(44, 30, 22, 0.18);
+            box-shadow: 0 4px 14px rgba(44, 30, 22, 0.20);
             display: flex;
             align-items: center;
             justify-content: space-between;
             gap: 20px;
-        }
-        .banner-cobre h1 {
+        }}
+        .banner-cobre h1 {{
             color: #FFFFFF;
             margin: 0 0 8px 0;
-            font-size: 1.95rem;
+            font-size: 1.9rem;
             letter-spacing: -0.3px;
-        }
-        .banner-cobre p {
+        }}
+        .banner-cobre p {{
             color: #F3E5D8;
             margin: 0;
-            font-size: 0.98rem;
+            font-size: 0.96rem;
             line-height: 1.45;
-        }
-        .badge-cu {
+        }}
+        .badge-cu {{
             background: rgba(255, 255, 255, 0.12);
             border: 2px solid #F2C185;
             border-radius: 12px;
@@ -97,25 +146,25 @@ def aplicar_identidad_minera():
             text-align: center;
             min-width: 105px;
             backdrop-filter: blur(4px);
-        }
-        .badge-cu .num {
+        }}
+        .badge-cu .num {{
             font-size: 0.85rem;
             color: #F2C185;
             font-weight: 700;
             text-align: left;
-        }
-        .badge-cu .sym {
+        }}
+        .badge-cu .sym {{
             font-size: 2.1rem;
             font-weight: 800;
             color: #FFFFFF;
             line-height: 1.05;
-        }
-        .badge-cu .name {
+        }}
+        .badge-cu .name {{
             font-size: 0.75rem;
             color: #F3E5D8;
             letter-spacing: 1px;
             text-transform: uppercase;
-        }
+        }}
         </style>
 
         <div class="banner-cobre">
@@ -147,10 +196,11 @@ def aplicar_identidad_minera():
         unsafe_allow_html=True
     )
 
-    if os.path.exists(RUTA_IMAGEN_OPCIONAL):
+    # Banner fotográfico panorámico de mina a rajo abierto en el norte de Chile
+    if os.path.exists(RUTA_BANNER):
         st.image(
-            RUTA_IMAGEN_OPCIONAL,
-            caption="Gran Minería del Cobre en Chile — Estadísticas Históricas",
+            RUTA_BANNER,
+            caption="Gran Minería del Cobre en el Norte de Chile — Yacimiento a Rajo Abierto y Cordillera de los Andes",
             use_container_width=True
         )
 
@@ -489,7 +539,7 @@ def main():
     todas_companias = sorted(df_comp["compania"].unique().tolist())
     anio_min, anio_max = int(df_comp["anio"].min()), int(df_comp["anio"].max())
 
-    # Inicializar en session_state los controles que van debajo de cada gráfico
+    # Inicializar en session_state los controles ubicados debajo de cada gráfico
     if "rango_anios" not in st.session_state:
         st.session_state["rango_anios"] = (anio_min, anio_max)
     if "top_n" not in st.session_state:
@@ -517,7 +567,6 @@ def main():
 
     mostrar_precio = st.sidebar.checkbox("Superponer precio del cobre en evolución", value=True)
 
-    # Usar valores actuales de session_state para filtrar datos y KPIs
     rango_actual = st.session_state["rango_anios"]
     top_n_actual = st.session_state["top_n"]
 
@@ -584,6 +633,23 @@ def main():
         with col_p2:
             st.caption("Nota: El desglose por subproducto refinado cubre 1998–2017.")
             st.pyplot(grafico_pastel_refinado(df_prod, col_val, rango_actual))
+
+        if os.path.exists(RUTA_CATODOS):
+            st.divider()
+            col_img, col_txt = st.columns([1.2, 1.8])
+            with col_img:
+                st.image(
+                    RUTA_CATODOS,
+                    caption="Cátodos de Cobre Refinado de Alta Pureza (99,99%)",
+                    use_container_width=True
+                )
+            with col_txt:
+                st.subheader("Procesamiento Metalúrgico en Chile")
+                st.write(
+                    "La producción chilena de cobre refinado se divide principalmente en **cátodos electroobtenidos (SX-EW)** "
+                    "provenientes de minerales oxidados y **cátodos electrorrefinados (E.R.)** derivados de concentrados sulfurados, "
+                    "exportados directamente a mercados industriales globales."
+                )
 
     with tab3:
         vista_tabla = st.selectbox(
