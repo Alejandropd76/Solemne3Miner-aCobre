@@ -1,20 +1,26 @@
-PROYECTO: Monitor de Producción de Cobre en Chile: Compañías y Productos
+PROYECTO: Monitor de Producción Minera y Precio del Cobre en Chile
 ASIGNATURA: Taller de Programación II - Tercera Solemne (2026)
 INTEGRANTES:
 1. Alejandro Pinochet
-2. Felipe Farías
-3. Jesús Torres
+2. Jesús Torres
+3. Felipe Farías
 
 URL DE LA APLICACIÓN DESPLEGADA:
- https://proyectomineria.streamlit.app
+[Pegar aquí el enlace público de Streamlit Community Cloud]
 
-MODALIDAD Y FUENTE DE DATOS:
+MODALIDAD Y FUENTES DE DATOS:
 - Modalidad: Archivos CSV locales cargados mediante rutas relativas con pandas:
-  * "Producción de cobre por compañía.xlsx - Sheet0.csv" (Serie 1998-2018)
-  * "produccion-por-producto.csv" (Serie 1998-2017)
-- Fuente: Comisión Chilena del Cobre (COCHILCO) - Anuario de Estadísticas del Cobre y otros Minerales.
-- Enlace fuente: https://www.cochilco.cl
+  1) "Producción de cobre por compañía.xlsx - Sheet0.csv" (Serie 1998-2018)
+  2) "produccion-por-producto.csv" (Serie 1998-2017)
+  3) "copper-price.csv" (Serie mensual 1992-2026 en US$/TM)
+
+- Fuentes y enlaces:
+  * Producción minera: Comisión Chilena del Cobre (COCHILCO)
+    Enlace: https://www.cochilco.cl
+  * Precios históricos del cobre: Eco3Min - Copper Price History Dataset
+    Enlace: https://eco3min.fr/en/copper-price-history-dataset/
 
 INSTRUCCIONES DE EJECUCIÓN LOCAL:
-1. Instalar dependencias: pip install -r requirements.txt
-2. Ejecutar en terminal: streamlit run app.py
+1. Verificar que app.py, requirements.txt y los tres archivos CSV estén en la misma carpeta.
+2. Instalar las dependencias ejecutando: pip install -r requirements.txt
+3. Iniciar la aplicación ejecutando: streamlit run app.py
