@@ -4,19 +4,22 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import streamlit as st
 
-# Rutas relativas con los nombres originales exactos de los CSV
+# Rutas relativas de los tres CSV en la carpeta raíz del repositorio
 RUTA_COMPANIAS = "Producción de cobre por compañía.xlsx - Sheet0.csv"
 RUTA_PRODUCTOS = "produccion-por-producto.csv"
+RUTA_PRECIOS = "copper-price.csv"
 
-# Configuración general de la página
+# Factor de conversión oficial: 1 tonelada métrica = 2.204,62262 libras
+LIBRAS_POR_TONELADA = 2204.62262
+
 st.set_page_config(
-    page_title="Dashboard Minería del Cobre en Chile",
+    page_title="Dashboard Minería y Precio del Cobre en Chile",
     layout="wide"
 )
 
 
 # ==============================================================================
-# 1. FUNCIONES DE CARGA Y LIMPIEZA DE DATOS
+# 1. FUNCIONES DE CARGA Y PREPARACIÓN DE DATOS
 # ==============================================================================
 
 @st.cache_data
@@ -43,41 +46,80 @@ def limpiar_valor_numerico(valor) -> float:
         return np.nan
 
 
-def preparar_datos_companias(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+def preparar_datos_precios(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
     """
-    Transforma el CSV de compañías de formato ancho (1998-2018) a formato largo,
-    excluye la fila TOTAL, limpia notas al pie y convierte tipos numéricos.
+    Limpia el CSV mensual de precios (US$/TM), convierte unidades a US$/lb y cUS$/lb,
+    y agrupa por año calculando el promedio y la volatilidad intra-anual.
+    """
+    df = df_raw.copy()
+    registros_iniciales = len(df)
+    df = df.drop_duplicates(subset=["date"])
+
+    df["fecha"] = pd.to_datetime(df["date"], errors="coerce")
+    df["precio_usd_ton"] = pd.to_numeric(df["copper_price_usd"], errors="coerce")
+    df = df.dropna(subset=["fecha", "precio_usd_ton"]).copy()
+
+    df["anio"] = df["fecha"].dt.year.astype(int)
+    df["mes"] = df["fecha"].dt.month.astype(int)
+    df["precio_usd_lb"] = df["precio_usd_ton"] / LIBRAS_POR_TONELADA
+    df["precio_cusd_lb"] = df["precio_usd_lb"] * 100.0
+
+    # Agrupación anual para cruzar con los registros anuales de producción
+    df_anual = df.groupby("anio", as_index=False).agg(
+        precio_usd_ton=("precio_usd_ton", "mean"),
+        precio_usd_lb=("precio_usd_lb", "mean"),
+        precio_cusd_lb=("precio_cusd_lb", "mean"),
+        volatilidad_usd_ton=("precio_usd_ton", "std"),
+        meses_registrados=("mes", "count")
+    )
+
+    resumen = {
+        "mensuales_totales": registros_iniciales,
+        "nulos": int(df_raw["copper_price_usd"].isna().sum()),
+        "duplicados": registros_iniciales - len(df),
+        "rango_fechas": f"{df['fecha'].min().strftime('%Y-%m')} a {df['fecha'].max().strftime('%Y-%m')}",
+        "anios_cubiertos": len(df_anual)
+    }
+    return df, df_anual, resumen
+
+
+def preparar_datos_companias(df_raw: pd.DataFrame, df_precios_anual: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """
+    Transforma el CSV de compañías (1998-2018) de formato ancho a largo,
+    limpia valores, cruza con precios históricos (pd.merge) y estima la valorización.
     """
     df = df_raw.copy()
     col_nombre = df.columns[0]
 
-    # Eliminar fila de totales para evitar doble conteo
+    # Excluir fila TOTAL para evitar doble conteo
     df = df[~df[col_nombre].astype(str).str.upper().str.startswith("TOTAL")].copy()
 
-    # Limpiar notas al pie tipo (2), (3), (4), (5) al final del nombre
+    # Limpiar notas al pie tipo (2), (3), (4), (5)
     df[col_nombre] = df[col_nombre].apply(
         lambda x: re.sub(r"\s*\(\d+\)$", "", str(x).strip())
     )
 
-    # Pasar de formato ancho (columnas por año) a formato largo (tidy data)
     df_largo = df.melt(id_vars=[col_nombre], var_name="anio", value_name="produccion_raw")
     df_largo.columns = ["compania", "anio", "produccion_raw"]
     df_largo["anio"] = pd.to_numeric(df_largo["anio"], errors="coerce").astype(int)
     df_largo["produccion_ktmf"] = df_largo["produccion_raw"].apply(limpiar_valor_numerico)
 
-    total_celdas = len(df_largo)
     nulos_guiones = int(df_largo["produccion_ktmf"].isna().sum())
 
-    # Descartar años previos al inicio de operación de cada faena
     df_limpio = df_largo.dropna(subset=["produccion_ktmf"]).drop(columns=["produccion_raw"]).copy()
     duplicados = int(df_limpio.duplicated(subset=["compania", "anio"]).sum())
     df_limpio = df_limpio.drop_duplicates(subset=["compania", "anio"])
 
-    # Columna derivada en Toneladas Métricas de Fino (TMF)
+    # Conversión de unidades y cruce con tabla de precios anuales
     df_limpio["produccion_tmf"] = df_limpio["produccion_ktmf"] * 1000.0
+    df_limpio = pd.merge(df_limpio, df_precios_anual, on="anio", how="left")
+
+    # Valorización bruta estimada en millones de USD (TMF * US$/TM / 1.000.000)
+    df_limpio["valorizacion_musd"] = (
+        df_limpio["produccion_tmf"] * df_limpio["precio_usd_ton"]
+    ) / 1_000_000.0
 
     resumen = {
-        "celdas_totales": total_celdas,
         "sin_operacion": nulos_guiones,
         "duplicados": duplicados,
         "registros_validos": len(df_limpio),
@@ -86,15 +128,11 @@ def preparar_datos_companias(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     return df_limpio, resumen
 
 
-def preparar_datos_productos(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """
-    Transforma el CSV de productos (1998-2017) a formato largo y clasifica
-    etapas principales vs. subproductos de cobre refinado.
-    """
+def preparar_datos_productos(df_raw: pd.DataFrame, df_precios_anual: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Transforma el CSV de productos (1998-2017) a formato largo y lo cruza con precios."""
     df = df_raw.copy()
     col_prod = df.columns[0]
 
-    # Simplificar nombres bilingües dejando la etiqueta en español
     df[col_prod] = df[col_prod].apply(lambda x: str(x).split(" - ")[0].strip())
 
     df_largo = df.melt(id_vars=[col_prod], var_name="anio", value_name="produccion_ktmf")
@@ -108,6 +146,7 @@ def preparar_datos_productos(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
     df_largo["categoria"] = df_largo["producto"].apply(
         lambda p: "Subproducto Refinado" if p in subproductos_refinado else "Etapa Principal"
     )
+    df_largo = pd.merge(df_largo, df_precios_anual, on="anio", how="left")
 
     resumen = {
         "registros_validos": len(df_largo),
@@ -118,7 +157,7 @@ def preparar_datos_productos(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
 
 
 def filtrar_companias(df: pd.DataFrame, companias: list, rango_anios: tuple) -> pd.DataFrame:
-    """Filtra el DataFrame de compañías según selección del usuario."""
+    """Filtra el DataFrame de compañías según los parámetros de la barra lateral."""
     return df[
         (df["compania"].isin(companias)) &
         (df["anio"] >= rango_anios[0]) &
@@ -130,31 +169,43 @@ def filtrar_companias(df: pd.DataFrame, companias: list, rango_anios: tuple) -> 
 # 2. FUNCIONES DE VISUALIZACIÓN (4 TIPOS DE GRÁFICOS DISTINTOS)
 # ==============================================================================
 
-def grafico_lineas_evolucion(df: pd.DataFrame, col_val: str, unidad: str, mostrar_prom: bool):
-    """Gráfico 1 (Líneas): Evolución anual de la producción total filtrada."""
-    df_anual = df.groupby("anio", as_index=False)[col_val].sum()
+def grafico_lineas_evolucion(df: pd.DataFrame, col_val: str, unidad: str, mostrar_precio: bool):
+    """Gráfico 1 (Líneas con doble eje): Producción anual vs. Precio del Cobre (cUS$/lb)."""
+    df_anual = df.groupby("anio", as_index=False).agg({
+        col_val: "sum",
+        "precio_cusd_lb": "mean"
+    })
 
-    fig, ax = plt.subplots(figsize=(8, 4.2))
-    ax.plot(
+    fig, ax1 = plt.subplots(figsize=(8, 4.3))
+    color_prod = "#197A8D"
+    l1 = ax1.plot(
         df_anual["anio"], df_anual[col_val],
-        marker="o", color="#197A8D", linewidth=2, label=f"Producción anual ({unidad})"
+        marker="o", color=color_prod, linewidth=2, label=f"Producción ({unidad})"
     )
+    ax1.set_xlabel("Año")
+    ax1.set_ylabel(f"Producción Total ({unidad})", color=color_prod)
+    ax1.tick_params(axis="y", labelcolor=color_prod)
+    ax1.set_xticks(df_anual["anio"][::2])
+    ax1.grid(True, linestyle="--", alpha=0.35)
+    ax1.spines["top"].set_visible(False)
 
-    if mostrar_prom and len(df_anual) > 0:
-        promedio = df_anual[col_val].mean()
-        ax.axhline(
-            promedio, color="#D95F02", linestyle="--", linewidth=1.5,
-            label=f"Promedio período ({promedio:,.1f} {unidad})"
+    lineas = l1
+    if mostrar_precio:
+        ax2 = ax1.twinx()
+        color_precio = "#D95F02"
+        l2 = ax2.plot(
+            df_anual["anio"], df_anual["precio_cusd_lb"],
+            marker="s", linestyle="--", color=color_precio, linewidth=1.8,
+            label="Precio Cobre (cUS$/lb)"
         )
+        ax2.set_ylabel("Precio Promedio (cUS$/lb)", color=color_precio)
+        ax2.tick_params(axis="y", labelcolor=color_precio)
+        ax2.spines["top"].set_visible(False)
+        lineas = l1 + l2
 
-    ax.set_title("Evolución Anual de Producción de Cobre (Compañías Seleccionadas)")
-    ax.set_xlabel("Año")
-    ax.set_ylabel(f"Producción ({unidad})")
-    ax.set_xticks(df_anual["anio"][::2])
-    ax.grid(True, linestyle="--", alpha=0.35)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.legend()
+    etiquetas = [l.get_label() for l in lineas]
+    ax1.legend(lineas, etiquetas, loc="upper left")
+    plt.title("Evolución Anual de Producción vs. Precio del Cobre")
     fig.tight_layout()
     return fig
 
@@ -169,7 +220,7 @@ def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: i
         .sort_values(by=col_val, ascending=True)
     )
 
-    fig, ax = plt.subplots(figsize=(8, 4.2))
+    fig, ax = plt.subplots(figsize=(8, 4.3))
     ax.barh(df_top["compania"], df_top[col_val], color="#2B8CBE")
     ax.set_title(f"Top {len(df_top)} Compañías por Producción Acumulada")
     ax.set_xlabel(f"Producción Acumulada ({unidad})")
@@ -181,8 +232,38 @@ def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: i
     return fig
 
 
+def grafico_dispersion_precio_produccion(df: pd.DataFrame, col_val: str, unidad: str):
+    """Gráfico 3 (Dispersión): Relación entre Precio del Cobre (cUS$/lb) y Producción Anual."""
+    df_anual = df.groupby("anio", as_index=False).agg({
+        col_val: "sum",
+        "precio_cusd_lb": "mean"
+    })
+
+    fig, ax = plt.subplots(figsize=(7.5, 4.3))
+    ax.scatter(
+        df_anual["precio_cusd_lb"],
+        df_anual[col_val],
+        color="#7570B3", edgecolors="black", s=75, alpha=0.85
+    )
+    for _, fila in df_anual.iterrows():
+        ax.annotate(
+            str(int(fila["anio"])),
+            (fila["precio_cusd_lb"], fila[col_val]),
+            fontsize=8, alpha=0.8, xytext=(4, 3), textcoords="offset points"
+        )
+
+    ax.set_title("Correlación: Precio del Cobre vs. Producción Anual")
+    ax.set_xlabel("Precio Promedio Anual (cUS$/lb)")
+    ax.set_ylabel(f"Producción Total Anual ({unidad})")
+    ax.grid(True, linestyle="--", alpha=0.35)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
+    return fig
+
+
 def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tuple):
-    """Gráfico 3 (Pastel): Participación porcentual de subproductos de cobre refinado."""
+    """Gráfico 4 (Pastel): Participación porcentual de subproductos de cobre refinado."""
     h_min, h_max = rango_anios[0], min(rango_anios[1], 2017)
     df_sub = df_prod[
         (df_prod["categoria"] == "Subproducto Refinado") &
@@ -192,7 +273,7 @@ def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tu
     df_pie = df_sub.groupby("producto", as_index=False)[col_val].sum()
     df_pie = df_pie[df_pie[col_val] > 0]
 
-    fig, ax = plt.subplots(figsize=(7, 4.2))
+    fig, ax = plt.subplots(figsize=(7.5, 4.3))
     colores = ["#197A8D", "#66C2A5", "#FC8D62"]
     ax.pie(
         df_pie[col_val],
@@ -202,36 +283,7 @@ def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tu
         colors=colores[:len(df_pie)],
         wedgeprops={"edgecolor": "white", "linewidth": 1.5}
     )
-    ax.set_title(f"Distribución de Cobre Refinado por Subproducto ({h_min}–{h_max})")
-    fig.tight_layout()
-    return fig
-
-
-def grafico_dispersion_etapas(df_prod: pd.DataFrame, col_val: str, unidad: str, rango_anios: tuple):
-    """Gráfico 4 (Dispersión): Relación entre Producción de Mina y Producción de Refinado."""
-    h_min, h_max = rango_anios[0], min(rango_anios[1], 2017)
-    df_etapas = df_prod[
-        (df_prod["producto"].isin(["PRODUCCIÓN DE MINA", "PRODUCCIÓN DE REFINADO"])) &
-        (df_prod["anio"] >= h_min) &
-        (df_prod["anio"] <= h_max)
-    ]
-    df_piv = df_etapas.pivot(index="anio", columns="producto", values=col_val).dropna()
-
-    fig, ax = plt.subplots(figsize=(7, 4.2))
-    ax.scatter(
-        df_piv["PRODUCCIÓN DE MINA"],
-        df_piv["PRODUCCIÓN DE REFINADO"],
-        color="#7570B3", edgecolors="black", s=75, alpha=0.85
-    )
-    for anio, fila in df_piv.iterrows():
-        ax.annotate(str(anio), (fila["PRODUCCIÓN DE MINA"], fila["PRODUCCIÓN DE REFINADO"]), fontsize=8, alpha=0.75)
-
-    ax.set_title(f"Relación Producción de Mina vs. Refinado ({h_min}–{h_max})")
-    ax.set_xlabel(f"Producción de Mina ({unidad})")
-    ax.set_ylabel(f"Producción de Refinado ({unidad})")
-    ax.grid(True, linestyle="--", alpha=0.35)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    ax.set_title(f"Composición del Cobre Refinado por Subproducto ({h_min}–{h_max})")
     fig.tight_layout()
     return fig
 
@@ -241,28 +293,30 @@ def grafico_dispersion_etapas(df_prod: pd.DataFrame, col_val: str, unidad: str, 
 # ==============================================================================
 
 def main():
-    st.title("Monitor de Producción de Cobre en Chile: Compañías y Productos")
+    st.title("Monitor de Producción Minera y Precio del Cobre en Chile")
     st.markdown(
-        "Dashboard interactivo para explorar la producción minera chilena por **compañía/faena (1998–2018)** "
-        "y por **etapa o tipo de producto (1998–2017)** a partir de estadísticas oficiales de COCHILCO."
+        "Dashboard interactivo para analizar la producción de cobre por **compañía/faena (1998–2018)**, "
+        "el desglose por **tipo de producto (1998–2017)** y su relación con la **cotización internacional del cobre**."
     )
 
-    # Carga de ambos CSV locales desde rutas relativas
+    # Carga de los tres archivos CSV desde rutas relativas
     try:
         raw_comp = cargar_csv(RUTA_COMPANIAS)
         raw_prod = cargar_csv(RUTA_PRODUCTOS)
+        raw_prec = cargar_csv(RUTA_PRECIOS)
     except FileNotFoundError as err:
-        st.error(f"Error al cargar archivos CSV locales: {err}. Verifica que ambos estén en la carpeta raíz.")
+        st.error(f"Error al cargar archivos CSV locales: {err}. Verifica que los 3 CSV estén en la carpeta raíz.")
         st.stop()
 
-    df_comp, info_comp = preparar_datos_companias(raw_comp)
-    df_prod, info_prod = preparar_datos_productos(raw_prod)
+    df_prec_mensual, df_prec_anual, info_prec = preparar_datos_precios(raw_prec)
+    df_comp, info_comp = preparar_datos_companias(raw_comp, df_prec_anual)
+    df_prod, info_prod = preparar_datos_productos(raw_prod, df_prec_anual)
 
     # --------------------------------------------------------------------------
     # BARRA LATERAL: CONTROLES E INTERACTIVIDAD
     # --------------------------------------------------------------------------
     st.sidebar.header("Filtros y Controles")
-    st.sidebar.info("Usa estos controles para filtrar las compañías, el rango de años y las unidades.")
+    st.sidebar.info("Ajusta los filtros para actualizar métricas, gráficos y tablas.")
 
     todas_companias = sorted(df_comp["compania"].unique().tolist())
     companias_sel = st.sidebar.multiselect(
@@ -288,15 +342,14 @@ def main():
     )
 
     unidad_radio = st.sidebar.radio(
-        "Unidad de medida",
+        "Unidad de producción",
         options=["Miles de TMF (kTMF)", "Toneladas Métricas de Fino (TMF)"]
     )
     col_val = "produccion_ktmf" if "kTMF" in unidad_radio else "produccion_tmf"
     unidad_txt = "kTMF" if "kTMF" in unidad_radio else "TMF"
 
-    mostrar_promedio = st.sidebar.checkbox("Mostrar línea de promedio anual", value=True)
+    mostrar_precio = st.sidebar.checkbox("Superponer precio del cobre en gráfico de evolución", value=True)
 
-    # Filtrado efectivo
     df_comp_filt = filtrar_companias(df_comp, companias_sel, rango_anios)
 
     if df_comp_filt.empty:
@@ -304,18 +357,20 @@ def main():
         st.stop()
 
     # --------------------------------------------------------------------------
-    # INDICADORES CALCULADOS (KPIs)
+    # INDICADORES CLAVE (KPIs)
     # --------------------------------------------------------------------------
     st.subheader("Indicadores Clave del Período Seleccionado")
-    kpi1, kpi2, kpi3 = st.columns(3)
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 
     prod_acumulada = df_comp_filt[col_val].sum()
-    prod_anual_media = df_comp_filt.groupby("anio")[col_val].sum().mean()
+    precio_prom_periodo = df_comp_filt.groupby("anio")["precio_cusd_lb"].mean().mean()
+    valorizacion_total = df_comp_filt["valorizacion_musd"].sum()
     lider_fila = df_comp_filt.groupby("compania")[col_val].sum().idxmax()
 
     kpi1.metric(f"Producción Acumulada ({unidad_txt})", f"{prod_acumulada:,.1f}")
-    kpi2.metric(f"Promedio Anual Selección ({unidad_txt})", f"{prod_anual_media:,.1f}")
-    kpi3.metric("Compañía Líder del Período", lider_fila)
+    kpi2.metric("Precio Promedio Cobre", f"{precio_prom_periodo:,.2f} cUS$/lb")
+    kpi3.metric("Valorización Bruta Est.", f"US$ {valorizacion_total:,.0f} M")
+    kpi4.metric("Compañía Líder", lider_fila)
 
     st.divider()
 
@@ -323,8 +378,8 @@ def main():
     # PESTAÑAS DE VISUALIZACIÓN Y DATOS
     # --------------------------------------------------------------------------
     tab1, tab2, tab3, tab4 = st.tabs([
-        "1. Evolución y Ranking por Compañía",
-        "2. Análisis por Tipo de Producto",
+        "1. Compañías y Precio del Cobre",
+        "2. Correlación y Productos",
         "3. Tabla y Descarga CSV",
         "4. Limpieza y Fuentes"
     ])
@@ -332,53 +387,76 @@ def main():
     with tab1:
         col_a, col_b = st.columns(2)
         with col_a:
-            st.pyplot(grafico_lineas_evolucion(df_comp_filt, col_val, unidad_txt, mostrar_promedio))
+            st.pyplot(grafico_lineas_evolucion(df_comp_filt, col_val, unidad_txt, mostrar_precio))
         with col_b:
             st.pyplot(grafico_barras_ranking(df_comp_filt, col_val, unidad_txt, top_n))
 
     with tab2:
-        st.caption("Nota: El desglose por producto cubre el período 1998–2017 según disponibilidad de la serie.")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            st.pyplot(grafico_pastel_refinado(df_prod, col_val, rango_anios))
+            st.pyplot(grafico_dispersion_precio_produccion(df_comp_filt, col_val, unidad_txt))
         with col_p2:
-            st.pyplot(grafico_dispersion_etapas(df_prod, col_val, unidad_txt, rango_anios))
+            st.caption("Nota: El desglose por subproducto refinado cubre 1998–2017.")
+            st.pyplot(grafico_pastel_refinado(df_prod, col_val, rango_anios))
 
     with tab3:
         vista_tabla = st.selectbox(
             "Selecciona conjunto de datos a inspeccionar",
-            options=["Producción por Compañía (Filtrada)", "Producción por Producto (1998–2017)"]
+            options=[
+                "Producción por Compañía + Precio Anual (Filtrada)",
+                "Producción por Producto + Precio Anual (1998–2017)",
+                "Serie Histórica Mensual Precios Cobre (1992–2026)"
+            ]
         )
-        df_tabla = df_comp_filt if "Compañía" in vista_tabla else df_prod
+        if "Compañía" in vista_tabla:
+            df_tabla = df_comp_filt
+        elif "Producto" in vista_tabla:
+            df_tabla = df_prod
+        else:
+            df_tabla = df_prec_mensual[["date", "anio", "mes", "precio_usd_ton", "precio_usd_lb", "precio_cusd_lb"]]
+
         st.dataframe(df_tabla, use_container_width=True, hide_index=True)
 
         csv_descarga = df_tabla.to_csv(index=False, encoding="utf-8-sig").encode("utf-8-sig")
         st.download_button(
             label="Descargar tabla actual en CSV",
             data=csv_descarga,
-            file_name="mineria_cobre_filtrado.csv",
+            file_name="mineria_cobre_con_precios.csv",
             mime="text/csv"
         )
 
     with tab4:
-        st.subheader("Auditoría y Preparación de Datos (Pandas)")
+        st.subheader("Auditoría, Limpieza y Cruce de Datos (Pandas)")
         st.write(
-            f"- **Dataset Compañías (`1998–2018`):** {info_comp['registros_validos']} registros operativos válidos "
-            f"de {info_comp['n_companias']} compañías/faenas ({info_comp['sin_operacion']} celdas `'-'` descartadas por corresponder a años previos al inicio de operación; {info_comp['duplicados']} duplicados)."
+            f"- **Dataset Compañías (`1998–2018`):** {info_comp['registros_validos']} registros válidos "
+            f"de {info_comp['n_companias']} faenas ({info_comp['sin_operacion']} celdas `'-'` descartadas por años sin operación; {info_comp['duplicados']} duplicados)."
         )
         st.write(
             f"- **Dataset Productos (`1998–2017`):** {info_prod['registros_validos']} registros válidos en "
             f"{info_prod['productos']} categorías ({info_prod['nulos']} valores nulos)."
         )
+        st.write(
+            f"- **Dataset Precios (`copper-price.csv`):** {info_prec['mensuales_totales']} registros mensuales "
+            f"({info_prec['rango_fechas']}, {info_prec['nulos']} nulos, {info_prec['duplicados']} duplicados) "
+            f"agrupados en {info_prec['anios_cubiertos']} promedios anuales y convertidos de US$/TM a cUS$/lb "
+            f"(1 TM = 2.204,62 lb) para cruzar mediante `pd.merge()`."
+        )
         st.warning(
-            "Nota metodológica sobre calidad de datos: En 'Producción de cobre por compañía', la columna 2018 "
-            "utiliza separador decimal con coma y punto de miles ('1.242,70'), estandarizado mediante limpieza de cadenas. "
-            "En 'produccion-por-producto.csv', los valores del bloque 2008–2017 replican exactamente el bloque 1998–2007 en la fuente original."
+            "Notas sobre calidad de datos: En 'Producción de cobre por compañía', la columna 2018 utiliza punto de miles "
+            "y coma decimal ('1.242,70'), estandarizado mediante limpieza de strings. En 'produccion-por-producto.csv', "
+            "el bloque 2008–2017 replica las cifras de 1998–2007 en la fuente original."
         )
 
-        st.subheader("Fuente Oficial")
-        st.write("Comisión Chilena del Cobre (COCHILCO) - Estadísticas de Producción Minera.")
-        st.link_button("Visitar Portal Oficial de Estadísticas COCHILCO", "https://www.cochilco.cl")
+        st.subheader("Fuentes Oficiales de los Datos")
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            st.markdown("**1. Producción Minera por Compañía y Producto**")
+            st.write("Comisión Chilena del Cobre (COCHILCO) — Estadísticas de Producción Minera.")
+            st.link_button("Visitar Portal Oficial COCHILCO", "https://www.cochilco.cl")
+        with col_f2:
+            st.markdown("**2. Serie Histórica del Precio del Cobre (US$/TM)**")
+            st.write("Eco3Min — Copper Price History Dataset (cotización mensual 1992–2026).")
+            st.link_button("Visitar Fuente Eco3Min", "https://eco3min.fr/en/copper-price-history-dataset/")
 
 
 if __name__ == "__main__":
