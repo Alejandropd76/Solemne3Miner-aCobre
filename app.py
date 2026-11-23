@@ -1,3 +1,4 @@
+import os
 import re
 import numpy as np
 import pandas as pd
@@ -8,14 +9,178 @@ import streamlit as st
 RUTA_COMPANIAS = "Producción de cobre por compañía.xlsx - Sheet0.csv"
 RUTA_PRODUCTOS = "produccion-por-producto.csv"
 RUTA_PRECIOS = "copper-price.csv"
+RUTA_IMAGEN_OPCIONAL = "banner_mineria.jpg"
 
 # Factor de conversión oficial: 1 tonelada métrica = 2.204,62262 libras
 LIBRAS_POR_TONELADA = 2204.62262
 
+# Paleta de colores temática (Cobre y Minerales de Chile)
+COLOR_COBRE = "#B87333"
+COLOR_COBRE_CLARO = "#D49A6A"
+COLOR_TURQUESA = "#1E7E7A"
+COLOR_BRONCE = "#2C1E16"
+COLOR_ORO = "#D99B26"
+
 st.set_page_config(
-    page_title="Dashboard Minería y Precio del Cobre en Chile",
+    page_title="CobreChile | Monitor Minero y Cotización BML",
+    page_icon="⛏️",
     layout="wide"
 )
+
+
+# ==============================================================================
+# 0. ESTILOS VISUALES E IDENTIDAD MINERA (CSS + SVG)
+# ==============================================================================
+
+def aplicar_identidad_minera():
+    """Inyecta estilos CSS personalizados y renderiza el banner superior temático."""
+    st.markdown(
+        """
+        <style>
+        /* Tarjetas de indicadores KPI con borde de cobre metálico */
+        div[data-testid="stMetric"] {
+            background-color: #FFFFFF;
+            border-left: 6px solid #B87333;
+            border-top: 1px solid #E6D5C3;
+            border-right: 1px solid #E6D5C3;
+            border-bottom: 1px solid #E6D5C3;
+            padding: 14px 18px;
+            border-radius: 10px;
+            box-shadow: 0 2px 6px rgba(44, 30, 22, 0.06);
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #6E472B;
+            font-weight: 600;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #2C1E16;
+        }
+        /* Estilo de pestañas */
+        button[data-baseweb="tab"] {
+            font-weight: 600;
+            color: #5C3D28;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #B87333;
+        }
+        /* Contenedor Banner Principal */
+        .banner-cobre {
+            background: linear-gradient(135deg, #241710 0%, #5E3018 52%, #B87333 100%);
+            padding: 24px 30px;
+            border-radius: 14px;
+            color: #FAF6F2;
+            margin-bottom: 20px;
+            border: 1px solid #D49A6A;
+            box-shadow: 0 4px 14px rgba(44, 30, 22, 0.18);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+        }
+        .banner-cobre h1 {
+            color: #FFFFFF;
+            margin: 0 0 8px 0;
+            font-size: 1.95rem;
+            letter-spacing: -0.3px;
+        }
+        .banner-cobre p {
+            color: #F3E5D8;
+            margin: 0;
+            font-size: 0.98rem;
+            line-height: 1.45;
+        }
+        .badge-cu {
+            background: rgba(255, 255, 255, 0.12);
+            border: 2px solid #F2C185;
+            border-radius: 12px;
+            padding: 10px 16px;
+            text-align: center;
+            min-width: 105px;
+            backdrop-filter: blur(4px);
+        }
+        .badge-cu .num {
+            font-size: 0.85rem;
+            color: #F2C185;
+            font-weight: 700;
+            text-align: left;
+        }
+        .badge-cu .sym {
+            font-size: 2.1rem;
+            font-weight: 800;
+            color: #FFFFFF;
+            line-height: 1.05;
+        }
+        .badge-cu .name {
+            font-size: 0.75rem;
+            color: #F3E5D8;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        </style>
+
+        <div class="banner-cobre">
+            <div>
+                <h1>Monitor de Producción Minera y Precio del Cobre en Chile</h1>
+                <p>
+                    Análisis interactivo de la extracción por <strong>compañía y faena (1998–2018)</strong>,
+                    desglose metalúrgico por <strong>producto (1998–2017)</strong> y evolución de la
+                    <strong>cotización internacional del cobre</strong>.
+                </p>
+            </div>
+            <div style="display:flex; align-items:center; gap:16px;">
+                <svg width="110" height="82" viewBox="0 0 120 90" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Cordillera de los Andes estilizada -->
+                    <polygon points="5,75 35,25 65,75" fill="#8C5327" opacity="0.7"/>
+                    <polygon points="40,75 75,18 112,75" fill="#D49A6A" opacity="0.85"/>
+                    <polygon points="75,18 66,33 75,30 84,33" fill="#FAF6F2"/>
+                    <!-- Terrazas mina rajo abierto -->
+                    <path d="M18,75 Q60,55 102,75 Z" fill="#2C1E16"/>
+                    <path d="M28,75 Q60,62 92,75" stroke="#F2C185" stroke-width="2" fill="none"/>
+                    <path d="M38,75 Q60,68 82,75" stroke="#1E7E7A" stroke-width="2" fill="none"/>
+                </svg>
+                <div class="badge-cu">
+                    <div class="num">29</div>
+                    <div class="sym">Cu</div>
+                    <div class="name">Cobre • Chile</div>
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    # Si el equipo agrega una fotografía local llamada 'banner_mineria.jpg', se muestra aquí
+    if os.path.exists(RUTA_IMAGEN_OPCIONAL):
+        st.image(
+            RUTA_IMAGEN_OPCIONAL,
+            caption="Gran Minería del Cobre en Chile — Estadísticas Históricas",
+            use_container_width=True
+        )
+
+
+def renderizar_logo_sidebar():
+    """Dibuja un emblema vectorial de cátodo de cobre y piquetas en la barra lateral."""
+    st.sidebar.markdown(
+        """
+        <div style="text-align:center; padding: 8px 0 14px 0;">
+            <svg width="96" height="96" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="50" r="46" fill="#2C1E16" stroke="#B87333" stroke-width="4"/>
+                <circle cx="50" cy="50" r="39" fill="none" stroke="#1E7E7A" stroke-width="1.5" stroke-dasharray="4 3"/>
+                <!-- Lingote / Cátodo de cobre -->
+                <polygon points="30,66 70,66 63,52 37,52" fill="#B87333" stroke="#F2C185" stroke-width="1.5"/>
+                <!-- Piquetas cruzadas -->
+                <line x1="32" y1="26" x2="68" y2="48" stroke="#FAF6F2" stroke-width="3" stroke-linecap="round"/>
+                <line x1="68" y1="26" x2="32" y2="48" stroke="#FAF6F2" stroke-width="3" stroke-linecap="round"/>
+                <path d="M27,31 Q35,21 43,25" stroke="#D49A6A" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <path d="M73,31 Q65,21 57,25" stroke="#D49A6A" stroke-width="3" fill="none" stroke-linecap="round"/>
+                <text x="50" y="81" font-family="sans-serif" font-size="10" font-weight="bold" fill="#F2C185" text-anchor="middle">
+                    MINERÍA CHILE
+                </text>
+            </svg>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
 
 # ==============================================================================
@@ -64,7 +229,6 @@ def preparar_datos_precios(df_raw: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataF
     df["precio_usd_lb"] = df["precio_usd_ton"] / LIBRAS_POR_TONELADA
     df["precio_cusd_lb"] = df["precio_usd_lb"] * 100.0
 
-    # Agrupación anual para cruzar con los registros anuales de producción
     df_anual = df.groupby("anio", as_index=False).agg(
         precio_usd_ton=("precio_usd_ton", "mean"),
         precio_usd_lb=("precio_usd_lb", "mean"),
@@ -91,10 +255,7 @@ def preparar_datos_companias(df_raw: pd.DataFrame, df_precios_anual: pd.DataFram
     df = df_raw.copy()
     col_nombre = df.columns[0]
 
-    # Excluir fila TOTAL para evitar doble conteo
     df = df[~df[col_nombre].astype(str).str.upper().str.startswith("TOTAL")].copy()
-
-    # Limpiar notas al pie tipo (2), (3), (4), (5)
     df[col_nombre] = df[col_nombre].apply(
         lambda x: re.sub(r"\s*\(\d+\)$", "", str(x).strip())
     )
@@ -110,11 +271,9 @@ def preparar_datos_companias(df_raw: pd.DataFrame, df_precios_anual: pd.DataFram
     duplicados = int(df_limpio.duplicated(subset=["compania", "anio"]).sum())
     df_limpio = df_limpio.drop_duplicates(subset=["compania", "anio"])
 
-    # Conversión de unidades y cruce con tabla de precios anuales
     df_limpio["produccion_tmf"] = df_limpio["produccion_ktmf"] * 1000.0
     df_limpio = pd.merge(df_limpio, df_precios_anual, on="anio", how="left")
 
-    # Valorización bruta estimada en millones de USD (TMF * US$/TM / 1.000.000)
     df_limpio["valorizacion_musd"] = (
         df_limpio["produccion_tmf"] * df_limpio["precio_usd_ton"]
     ) / 1_000_000.0
@@ -166,52 +325,54 @@ def filtrar_companias(df: pd.DataFrame, companias: list, rango_anios: tuple) -> 
 
 
 # ==============================================================================
-# 2. FUNCIONES DE VISUALIZACIÓN (4 TIPOS DE GRÁFICOS DISTINTOS)
+# 2. FUNCIONES DE VISUALIZACIÓN (PALETA COBRE Y MINERALES DE CHILE)
 # ==============================================================================
 
 def grafico_lineas_evolucion(df: pd.DataFrame, col_val: str, unidad: str, mostrar_precio: bool):
-    """Gráfico 1 (Líneas con doble eje): Producción anual vs. Precio del Cobre (cUS$/lb)."""
+    """Gráfico 1 (Líneas con doble eje): Producción anual (Turquesa) vs. Precio del Cobre (Cobre)."""
     df_anual = df.groupby("anio", as_index=False).agg({
         col_val: "sum",
         "precio_cusd_lb": "mean"
     })
 
-    fig, ax1 = plt.subplots(figsize=(8, 4.3))
-    color_prod = "#197A8D"
+    fig, ax1 = plt.subplots(figsize=(8, 4.4))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax1.set_facecolor("#FCF9F6")
+
     l1 = ax1.plot(
         df_anual["anio"], df_anual[col_val],
-        marker="o", color=color_prod, linewidth=2, label=f"Producción ({unidad})"
+        marker="o", color=COLOR_TURQUESA, linewidth=2.3, label=f"Producción ({unidad})"
     )
-    ax1.set_xlabel("Año")
-    ax1.set_ylabel(f"Producción Total ({unidad})", color=color_prod)
-    ax1.tick_params(axis="y", labelcolor=color_prod)
+    ax1.fill_between(df_anual["anio"], df_anual[col_val], color=COLOR_TURQUESA, alpha=0.10)
+    ax1.set_xlabel("Año", fontweight="bold", color=COLOR_BRONCE)
+    ax1.set_ylabel(f"Producción Total ({unidad})", color=COLOR_TURQUESA, fontweight="bold")
+    ax1.tick_params(axis="y", labelcolor=COLOR_TURQUESA)
     ax1.set_xticks(df_anual["anio"][::2])
-    ax1.grid(True, linestyle="--", alpha=0.35)
+    ax1.grid(True, linestyle="--", alpha=0.35, color="#C8B6A6")
     ax1.spines["top"].set_visible(False)
 
     lineas = l1
     if mostrar_precio:
         ax2 = ax1.twinx()
-        color_precio = "#D95F02"
         l2 = ax2.plot(
             df_anual["anio"], df_anual["precio_cusd_lb"],
-            marker="s", linestyle="--", color=color_precio, linewidth=1.8,
+            marker="D", linestyle="--", color=COLOR_COBRE, linewidth=2.0,
             label="Precio Cobre (cUS$/lb)"
         )
-        ax2.set_ylabel("Precio Promedio (cUS$/lb)", color=color_precio)
-        ax2.tick_params(axis="y", labelcolor=color_precio)
+        ax2.set_ylabel("Precio Promedio (cUS$/lb)", color=COLOR_COBRE, fontweight="bold")
+        ax2.tick_params(axis="y", labelcolor=COLOR_COBRE)
         ax2.spines["top"].set_visible(False)
         lineas = l1 + l2
 
     etiquetas = [l.get_label() for l in lineas]
-    ax1.legend(lineas, etiquetas, loc="upper left")
-    plt.title("Evolución Anual de Producción vs. Precio del Cobre")
+    ax1.legend(lineas, etiquetas, loc="upper left", frameon=True, facecolor="#FFFFFF")
+    plt.title("Evolución Anual de Producción vs. Precio del Cobre", fontweight="bold", color=COLOR_BRONCE)
     fig.tight_layout()
     return fig
 
 
 def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: int):
-    """Gráfico 2 (Barras horizontales): Top N compañías por producción acumulada."""
+    """Gráfico 2 (Barras horizontales): Top N compañías en tonos cobre y bronce."""
     df_top = (
         df.groupby("compania", as_index=False)[col_val]
         .sum()
@@ -220,12 +381,28 @@ def grafico_barras_ranking(df: pd.DataFrame, col_val: str, unidad: str, top_n: i
         .sort_values(by=col_val, ascending=True)
     )
 
-    fig, ax = plt.subplots(figsize=(8, 4.3))
-    ax.barh(df_top["compania"], df_top[col_val], color="#2B8CBE")
-    ax.set_title(f"Top {len(df_top)} Compañías por Producción Acumulada")
-    ax.set_xlabel(f"Producción Acumulada ({unidad})")
-    ax.set_ylabel("Compañía / Faena")
-    ax.grid(axis="x", linestyle="--", alpha=0.35)
+    fig, ax = plt.subplots(figsize=(8, 4.4))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FCF9F6")
+
+    colores = [COLOR_COBRE if i == len(df_top) - 1 else COLOR_COBRE_CLARO for i in range(len(df_top))]
+    barras = ax.barh(df_top["compania"], df_top[col_val], color=colores, edgecolor=COLOR_BRONCE, linewidth=0.5)
+
+    max_val = df_top[col_val].max() if len(df_top) > 0 else 1
+    for barra in barras:
+        ancho = barra.get_width()
+        ax.text(
+            ancho + max_val * 0.015,
+            barra.get_y() + barra.get_height() / 2,
+            f"{ancho:,.0f}",
+            va="center", fontsize=8, color=COLOR_BRONCE, fontweight="bold"
+        )
+
+    ax.set_xlim(0, max_val * 1.16)
+    ax.set_title(f"Top {len(df_top)} Compañías por Producción Acumulada", fontweight="bold", color=COLOR_BRONCE)
+    ax.set_xlabel(f"Producción Acumulada ({unidad})", fontweight="bold", color=COLOR_BRONCE)
+    ax.set_ylabel("Compañía / Faena", fontweight="bold", color=COLOR_BRONCE)
+    ax.grid(axis="x", linestyle="--", alpha=0.35, color="#C8B6A6")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()
@@ -239,23 +416,26 @@ def grafico_dispersion_precio_produccion(df: pd.DataFrame, col_val: str, unidad:
         "precio_cusd_lb": "mean"
     })
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.3))
+    fig, ax = plt.subplots(figsize=(7.5, 4.4))
+    fig.patch.set_facecolor("#FFFFFF")
+    ax.set_facecolor("#FCF9F6")
+
     ax.scatter(
         df_anual["precio_cusd_lb"],
         df_anual[col_val],
-        color="#7570B3", edgecolors="black", s=75, alpha=0.85
+        color=COLOR_COBRE, edgecolors=COLOR_BRONCE, s=85, alpha=0.9
     )
     for _, fila in df_anual.iterrows():
         ax.annotate(
             str(int(fila["anio"])),
             (fila["precio_cusd_lb"], fila[col_val]),
-            fontsize=8, alpha=0.8, xytext=(4, 3), textcoords="offset points"
+            fontsize=8, color=COLOR_BRONCE, alpha=0.85, xytext=(4, 3), textcoords="offset points"
         )
 
-    ax.set_title("Correlación: Precio del Cobre vs. Producción Anual")
-    ax.set_xlabel("Precio Promedio Anual (cUS$/lb)")
-    ax.set_ylabel(f"Producción Total Anual ({unidad})")
-    ax.grid(True, linestyle="--", alpha=0.35)
+    ax.set_title("Correlación: Precio del Cobre vs. Producción Anual", fontweight="bold", color=COLOR_BRONCE)
+    ax.set_xlabel("Precio Promedio Anual (cUS$/lb)", fontweight="bold", color=COLOR_BRONCE)
+    ax.set_ylabel(f"Producción Total Anual ({unidad})", fontweight="bold", color=COLOR_BRONCE)
+    ax.grid(True, linestyle="--", alpha=0.35, color="#C8B6A6")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     fig.tight_layout()
@@ -263,7 +443,7 @@ def grafico_dispersion_precio_produccion(df: pd.DataFrame, col_val: str, unidad:
 
 
 def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tuple):
-    """Gráfico 4 (Pastel): Participación porcentual de subproductos de cobre refinado."""
+    """Gráfico 4 (Anillo / Pastel): Participación porcentual de subproductos de cobre refinado."""
     h_min, h_max = rango_anios[0], min(rango_anios[1], 2017)
     df_sub = df_prod[
         (df_prod["categoria"] == "Subproducto Refinado") &
@@ -273,17 +453,20 @@ def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tu
     df_pie = df_sub.groupby("producto", as_index=False)[col_val].sum()
     df_pie = df_pie[df_pie[col_val] > 0]
 
-    fig, ax = plt.subplots(figsize=(7.5, 4.3))
-    colores = ["#197A8D", "#66C2A5", "#FC8D62"]
+    fig, ax = plt.subplots(figsize=(7.5, 4.4))
+    fig.patch.set_facecolor("#FFFFFF")
+    colores = [COLOR_COBRE, COLOR_TURQUESA, COLOR_ORO]
+
     ax.pie(
         df_pie[col_val],
         labels=df_pie["producto"],
         autopct="%1.1f%%",
         startangle=140,
         colors=colores[:len(df_pie)],
-        wedgeprops={"edgecolor": "white", "linewidth": 1.5}
+        pctdistance=0.78,
+        wedgeprops={"edgecolor": "#FFFFFF", "linewidth": 2, "width": 0.45}
     )
-    ax.set_title(f"Composición del Cobre Refinado por Subproducto ({h_min}–{h_max})")
+    ax.set_title(f"Composición del Cobre Refinado por Subproducto ({h_min}–{h_max})", fontweight="bold", color=COLOR_BRONCE)
     fig.tight_layout()
     return fig
 
@@ -293,11 +476,7 @@ def grafico_pastel_refinado(df_prod: pd.DataFrame, col_val: str, rango_anios: tu
 # ==============================================================================
 
 def main():
-    st.title("Monitor de Producción Minera y Precio del Cobre en Chile")
-    st.markdown(
-        "Dashboard interactivo para analizar la producción de cobre por **compañía/faena (1998–2018)**, "
-        "el desglose por **tipo de producto (1998–2017)** y su relación con la **cotización internacional del cobre**."
-    )
+    aplicar_identidad_minera()
 
     # Carga de los tres archivos CSV desde rutas relativas
     try:
@@ -313,10 +492,11 @@ def main():
     df_prod, info_prod = preparar_datos_productos(raw_prod, df_prec_anual)
 
     # --------------------------------------------------------------------------
-    # BARRA LATERAL: CONTROLES E INTERACTIVIDAD
+    # BARRA LATERAL: EMBLEMA Y CONTROLES DE FILTRADO
     # --------------------------------------------------------------------------
+    renderizar_logo_sidebar()
     st.sidebar.header("Filtros y Controles")
-    st.sidebar.info("Ajusta los filtros para actualizar métricas, gráficos y tablas.")
+    st.sidebar.info("Ajusta los parámetros para actualizar métricas, gráficos y tablas.")
 
     todas_companias = sorted(df_comp["compania"].unique().tolist())
     companias_sel = st.sidebar.multiselect(
@@ -348,7 +528,7 @@ def main():
     col_val = "produccion_ktmf" if "kTMF" in unidad_radio else "produccion_tmf"
     unidad_txt = "kTMF" if "kTMF" in unidad_radio else "TMF"
 
-    mostrar_precio = st.sidebar.checkbox("Superponer precio del cobre en gráfico de evolución", value=True)
+    mostrar_precio = st.sidebar.checkbox("Superponer precio del cobre en evolución", value=True)
 
     df_comp_filt = filtrar_companias(df_comp, companias_sel, rango_anios)
 
@@ -457,6 +637,8 @@ def main():
             st.markdown("**2. Serie Histórica del Precio del Cobre (US$/TM)**")
             st.write("Eco3Min — Copper Price History Dataset (cotización mensual 1992–2026).")
             st.link_button("Visitar Fuente Eco3Min", "https://eco3min.fr/en/copper-price-history-dataset/")
+
+    st.caption("Desarrollado para Taller de Programación II • Industria Minera del Cobre en Chile.")
 
 
 if __name__ == "__main__":
