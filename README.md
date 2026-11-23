@@ -4,6 +4,7 @@ INTEGRANTES:
 1. Alejandro Pinochet
 2. Felipe Farías
 3. Jesús Torres
+
 URL DE LA APLICACIÓN DESPLEGADA:
  https://proyectomineria.streamlit.app
 
